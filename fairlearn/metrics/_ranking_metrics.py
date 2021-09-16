@@ -1,20 +1,43 @@
+# Copyright (c) Microsoft Corporation and Fairlearn contributors.
+# Licensed under the MIT License.
+
 import numpy as np
 import random
 import math
 
-KL_DIVERGENCE = "rKL"  # represent kl-divergence group fairness measure
+""""
+Metrics for measuring fairness in rankings
+
+Implemented metrics are:
+- Normalized discounted difference (rND)
+- Normalized discounted KL-divergence (rKL)
+    can be used for non-binary protected group memberships
+- Normalized discounted ratio (rRD)
+    can only be used when protected group is the minority group
+
+source:
+Ke Yang, Julia Stoyanovich (2017). Measuring Fairness in Ranked Outputs
+https://dl.acm.org/doi/10.1145/3085504.3085526
+"""
+
+# Global variables
 ND_DIFFERENCE = "rND"  # represent normalized difference group fairness measure
+KL_DIVERGENCE = "rKL"  # represent kl-divergence group fairness measure
 RD_DIFFERENCE = "rRD"  # represent ratio difference group fairness measure
-LOG_BASE = 2  # log base used in logorithm function
+LOG_BASE = 2  # log base used in logarithm function
 
 NORM_CUTPOINT = 10  # cut-off point used in normalizer computation
 NORM_ITERATION = 10  # max iterations used in normalizer computation
 
+_INVALID_GF_MEASURE = "Invalid group fairness measure was passed, " \
+                      "please choose one of the following: {'rND', 'rKL', 'rRD'}"
 
-def calculate_normalized_fairness(ranking, protected_group, cut_point, group_fairness_measure, normalizer):
-    """
-        Calculate group fairness value of the whole ranking.
-        Calls function 'calculateFairness' in the calculation.
+
+def calculate_normalized_fairness(ranking, protected_group, cut_point,
+                                  group_fairness_measure, normalizer):
+    """Calculate group fairness value of the whole ranking.
+
+    Calls function 'calculateFairness' in the calculation.
 
     Parameters
     ----------
@@ -30,7 +53,8 @@ def calculate_normalized_fairness(ranking, protected_group, cut_point, group_fai
         Group fairness measure to be used in the calculation, one of 'rKL', 'rND', 'rRD'.
         rRD can only be used when protected group is the minority group.
     normalizer : float
-        The normalizer of the input group_fairness_measure that is computed externally for efficiency.
+        The normalizer of the input group_fairness_measure
+        is computed externally for efficiency.
 
     Returns
     -------
@@ -41,12 +65,13 @@ def calculate_normalized_fairness(ranking, protected_group, cut_point, group_fai
     check_ranking_properties(ranking, protected_group)
 
     # error handling for input type
-    if not isinstance(cut_point, (int)):
+    if not isinstance(cut_point, int):
         raise TypeError("Input batch size must be an integer larger than 0")
     if not isinstance(normalizer, (int, float, complex)):
         raise TypeError("Input normalizer must be a number larger than 0")
     if not isinstance(group_fairness_measure, str):
-        raise TypeError("Input group fairness measure must be a string that choose from ['rKL', 'rND', 'rRD']")
+        raise TypeError("Input group fairness measure must be a string. "
+                        "Choose from ['rKL', 'rND', 'rRD']")
 
     user_number = len(ranking)
     protected_number = len(protected_group)
@@ -58,12 +83,12 @@ def calculate_normalized_fairness(ranking, protected_group, cut_point, group_fai
     discounted_gf = 0  # initialize the returned group fairness value
     for countni in range(user_number):
         countni = countni + 1
-        if (countni % cut_point == 0):
+        if countni % cut_point == 0:
             ranking_cutpoint = ranking[0:countni]
             protected_cutpoint = set(ranking_cutpoint).intersection(protected_group)
 
-            gf = calculate_fairness(ranking_cutpoint, protected_cutpoint, user_number, protected_number,
-                                    group_fairness_measure)
+            gf = calculate_fairness(ranking_cutpoint, protected_cutpoint, user_number,
+                                    protected_number, group_fairness_measure)
             discounted_gf += gf / math.log(countni + 1, LOG_BASE)  # log base -> global variable
 
     if normalizer == 0:
@@ -71,10 +96,12 @@ def calculate_normalized_fairness(ranking, protected_group, cut_point, group_fai
     return discounted_gf / normalizer
 
 
-def calculate_fairness(ranking, protected_group, user_number, protected_user_number, group_fairness_measure):
-    """
-        Calculate the group fairness value of input ranking.
-        Called by function 'calculate_normalized_Fairness'.
+def calculate_fairness(ranking, protected_group, user_number,
+                       protected_user_number, group_fairness_measure):
+    """Calculate the group fairness value of input ranking.
+
+    Called by function 'calculate_normalized_Fairness'
+
     Parameters
     ----------
     ranking : list, tuple, np.ndarray
@@ -87,13 +114,15 @@ def calculate_fairness(ranking, protected_group, user_number, protected_user_num
         The total user number of input ranking
     protected_user_number : int
         The size of protected group in the input ranking
+    group_fairness_measure : {'rND', 'rKL', 'rRD'} :
+        Group fairness measure to be used in the calculation, one of 'rKL', 'rND', 'rRD'.
+        rRD can only be used when protected group is the minority group.
 
     Returns
     -------
     float
         returns the value of selected group fairness measure of this input ranking
     """
-
     k = len(ranking)
     protected_in_k = len(protected_group)
     if group_fairness_measure == KL_DIVERGENCE:  # for KL-divergence difference
@@ -104,13 +133,14 @@ def calculate_fairness(ranking, protected_group, user_number, protected_user_num
 
     elif group_fairness_measure == RD_DIFFERENCE:  # for ratio difference
         gf = calculator_rd(k, protected_in_k, user_number, protected_user_number)
+    else:
+        raise ValueError(_INVALID_GF_MEASURE)
 
     return gf
 
 
 def calculator_kl(k, protected_k, user_number, protected_number):
-    """
-        Calculate the KL-divergence difference of input ranking
+    """Calculate the KL-divergence difference of input ranking.
 
     Parameters
     ----------
@@ -130,7 +160,7 @@ def calculator_kl(k, protected_k, user_number, protected_number):
     """
     px = protected_k / k
     qx = protected_number / user_number
-    if px == 0 or px == 1:  # manually set the value of extreme case to avoid error of math.log function
+    if px == 0 or px == 1:  # manually set the value of extreme case to avoid errors
         px = 0.001
     if qx == 0 or qx == 1:
         qx = 0.001
@@ -138,8 +168,7 @@ def calculator_kl(k, protected_k, user_number, protected_number):
 
 
 def calculator_nd(k, protected_k, user_number, protected_number):
-    """
-        Calculate the normalized difference of input ranking
+    """Calculate the normalized difference of input ranking.
 
     Parameters
     ----------
@@ -161,8 +190,7 @@ def calculator_nd(k, protected_k, user_number, protected_number):
 
 
 def calculator_rd(k, protected_k, user_number, protected_number):
-    """
-        Calculate the ratio difference of input ranking
+    """Calculate the ratio difference of input ranking.
 
     Parameters
     ----------
@@ -178,8 +206,7 @@ def calculator_rd(k, protected_k, user_number, protected_number):
     Returns
     -------
     float
-        :return: returns the value of ratio difference of this input ranking
-        # This version of rRD is consistent with poster of FATML instead of arXiv submission.
+        The value of ratio difference of this input ranking
     """
     input_ratio = protected_number / (user_number - protected_number)
     unprotected_k = k - protected_k
@@ -195,18 +222,22 @@ def calculator_rd(k, protected_k, user_number, protected_number):
 
 
 """"
-    Normalizer
+    Methods used to calculate Normalizer Z
+        Normalizer Z is computed as the highest possible value of the group fairness metric
+        for the given number of items N and protected group size |S^+|.
 """
 
 
 def calculate_normalizer(user_number, protected_user_number, group_fairness_measure):
-    """
-        Calculate the normalizer of input group fairness measure at input user and protected group setting.
-        The function use two constant: NORM_ITERATION AND NORM_CUTPOINT to specify the max iteration and batch size used in the calculation.
-        First, get the maximum value of input group fairness measure at different fairness probability.
-        Run the above calculation NORM_ITERATION times.
-        Then compute the average value of above results as the maximum value of each fairness probability.
-        Finally, choose the maximum of value as the normalizer of this group fairness measure.
+    """Calculate the normalizer of input group fairness measure.
+
+    The function use two constant: NORM_ITERATION AND NORM_CUTPOINT to specify the max iteration
+    and batch size used in the calculation.
+    First, get the maximum value of input group fairness measure at different fairness probability.
+    Run the above calculation NORM_ITERATION times.
+    Then compute the average value of above results as the maximum value of each fairness
+    probability.
+    Finally, choose the maximum of value as the normalizer of this group fairness measure.
 
     Parameters
     ----------
@@ -241,8 +272,7 @@ def calculate_normalizer(user_number, protected_user_number, group_fairness_meas
 
 
 def generate_unfair_ranking(ranking, protected_group, fairness_probability):
-    """
-        An algorithm for generating rankings with varying degree of fairness.
+    """Reranks the ranking with given unfairness degree.
 
     Parameters
     ----------
@@ -268,13 +298,13 @@ def generate_unfair_ranking(ranking, protected_group, fairness_probability):
     if fairness_probability > 1 or fairness_probability < 0:
         raise ValueError("Input fairness probability must be a number in [0,1]")
 
-    pro_ranking = [x for x in ranking if x not in protected_group]  # partial ranking of protected member
-    unpro_ranking = [x for x in ranking if x in protected_group]  # partial ranking of unprotected member
+    pro_ranking = [x for x in ranking if x not in protected_group]
+    unpro_ranking = [x for x in ranking if x in protected_group]
     pro_ranking.reverse()  # prepare for pop function to get the first element
     unpro_ranking.reverse()
     unfair_ranking = []
 
-    while (len(unpro_ranking) > 0 and len(pro_ranking) > 0):
+    while len(unpro_ranking) > 0 and len(pro_ranking) > 0:
         random_seed = random.random()  # generate a random value in range [0,1]
         if random_seed < fairness_probability:
             unfair_ranking.append(unpro_ranking.pop())  # insert protected group first
@@ -295,8 +325,7 @@ def generate_unfair_ranking(ranking, protected_group, fairness_probability):
 
 # Function for error handling
 def check_ranking_properties(ranking, protected_group):
-    """
-        Check whether input ranking and protected group is valid.
+    """Check whether input ranking and protected group is valid.
 
     Parameters
     ----------
@@ -313,28 +342,30 @@ def check_ranking_properties(ranking, protected_group):
     if not isinstance(ranking, (list, tuple, np.ndarray)):
         raise TypeError("Input ranking must be a list-wise structure defined by '[]' symbol")
     if not isinstance(protected_group, (list, tuple, np.ndarray)):
-        raise TypeError("Input protected group must be a list-wise structure defined by '[]' symbol")
+        raise TypeError("Input protected group must be a list-wise structure "
+                        "defined by '[]' symbol")
 
-    user_N = len(ranking)
-    pro_N = len(protected_group)
+    user_number = len(ranking)
+    protected_number = len(protected_group)
 
     # error handling for input value
-    if user_N <= 0:  # check size of input ranking
+    if user_number <= 0:  # check size of input ranking
         raise ValueError("Please input a valid ranking")
-    if pro_N <= 0:  # check size of input ranking
+    if protected_number <= 0:  # check size of input ranking
         raise ValueError("Please input a valid protected group whose length is larger than 0")
 
-    if pro_N >= user_N:  # check size of protected group
+    # check size of protected group
+    if protected_number >= user_number:
         raise ValueError("Please input a protected group with size less than total user")
-
-    if len(set(ranking)) != user_N:  # check for repetition in input ranking
+    # check for repetition in input ranking
+    if len(set(ranking)) != user_number:
         raise ValueError("Please input a valid complete ranking")
-
-    if len(set(protected_group)) != pro_N:  # check repetition of protected group
+    # check repetition of protected group
+    if len(set(protected_group)) != protected_number:
         raise ValueError("Please input a valid protected group that have no repetitive members")
-
-    if len(set(protected_group).intersection(ranking)) <= 0:  # check valid of protected group
+    # check valid of protected group
+    if len(set(protected_group).intersection(ranking)) <= 0:
         raise ValueError("Please input a valid protected group that is a subset of total user")
-
-    if len(set(protected_group).intersection(ranking)) != pro_N:  # check valid of protected group
+    # check valid of protected group
+    if len(set(protected_group).intersection(ranking)) != protected_number:
         raise ValueError("Please input a valid protected group that is a subset of total user")
