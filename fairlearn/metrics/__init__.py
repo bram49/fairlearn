@@ -48,6 +48,19 @@ from ._extra_metrics import (  # noqa: F401
     _mean_underprediction,
     count)
 
+from ._ranking_metrics import ( # noqa: F401
+    calculate_fairness,
+    calculate_normalized_fairness,
+    calculate_normalizer,
+    generate_unfair_ranking
+)
+
+from ._exposure import ( # noqa: F401
+    exposure,
+    utility,
+    exposure_utility_ratio
+)
+
 
 # Add the generated metrics of the form and
 # `<metric>_{difference,ratio,group_min,group_max`
@@ -80,4 +93,12 @@ _extra_metrics = [
     "count"
 ]
 
-__all__ = _core + _disparities + _extra_metrics + list(sorted(_generated_metric_dict.keys()))
+_ranking_metrics = [
+    "calculate_fairness"
+    "calculate_normalized_fairness",
+    "calculate_normalizer",
+    "generate_unfair_ranking"
+]
+
+__all__ = _core + _disparities + _extra_metrics + _ranking_metrics + \
+          list(sorted(_generated_metric_dict.keys()))
